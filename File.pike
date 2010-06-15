@@ -117,8 +117,10 @@ void write_header() {
 //! @returns
 //!	number of bytes written
 int write(int tag_type, int timestamp, string data) {
-	file->write("%1c%3c%3c\0\0\0\0%s%4c", 
-		    tag_type, sizeof(data), timestamp, data, 11+sizeof(data));
+	file->write("%1c%3c%3c%c\0\0\0%s%4c", 
+		    tag_type, sizeof(data), 
+		    timestamp & 0xffffff, (timestamp & 0xff000000) >> 24, 
+		    data, 11+sizeof(data));
 	timestamp = max(timestamp, max_timestamp);
 }
 
@@ -127,6 +129,7 @@ int write(int tag_type, int timestamp, string data) {
 //!	array ({ tag_type, timestamp, data })
 mixed read() {
 	string t;
+	int tag_type, data_size, timestamp, timestamp_extended;
 
 	if (!header_read) {
 		error("read_header() must be called before read\n");
@@ -136,9 +139,9 @@ mixed read() {
 	if (strlen(t) != 11) {
 		return 0;
 	}
-	int tag_type, data_size, timestamp;
-	sscanf(t, "%c%3c%3c%*c%*3c", tag_type, data_size, timestamp);
-	// FIXME: this ignores extended timestamp and streamid
+	// FIXME: this ignores streamid
+	sscanf(t, "%c%3c%3c%c%*3c", tag_type, data_size, timestamp, timestamp_extended);
+	timestamp += timestamp_extended << 24;
 	string data = file->read(data_size);
 
 	t = file->read(4);
