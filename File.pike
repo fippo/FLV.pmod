@@ -72,6 +72,7 @@ int raw_seek(int pos) {
 
 //! reads the header of the file
 //! and sets the variables signature, version, flags, offset and total length
+//! MUST be called before read() 
 mixed read_header() {
 	string t;
 	if (header_read) {
@@ -125,33 +126,55 @@ int write(int tag_type, int timestamp, string data) {
 }
 
 //! reads a single tag from the file
+//! @param backwards
+//!	if set, read backwards (i.e. starting from the end of the file)
 //! @returns
 //!	array ({ tag_type, timestamp, data })
-mixed read() {
+//!	or 0 if there was an error or there is no more tag
+mixed read(int|void backwards) {
 	string t;
-	int tag_type, data_size, timestamp, timestamp_extended;
+	int tag_type, data_size, timestamp, timestamp_extended, previous_tag_size;
+	int pos;
 
-	if (!header_read) {
-		error("read_header() must be called before read\n");
+	if (backwards) {
+		file->seek(file->tell() - 4);
+		t = file->read(4);
+		if (!t) {
+			return 0;
+		}
+		sscanf(t, "%4c", previous_tag_size);
+		if (!previous_tag_size) {
+			return 0;
+		}
+		pos = file->tell() - 4 - previous_tag_size;
+		file->seek(pos);
+	} else {
+		// FIXME: is this warning really needed?
+		/*
+		if (!header_read) {
+			error("read_header() must be called before read\n");
+		}
+		*/
 	}
 
 	t = file->read(11);
 	if (strlen(t) != 11) {
 		return 0;
 	}
-	// FIXME: this ignores streamid
+	// FIXME: this ignores streamid which should be 0
 	sscanf(t, "%c%3c%3c%c%*3c", tag_type, data_size, timestamp, timestamp_extended);
 	timestamp += timestamp_extended << 24;
 	string data = file->read(data_size);
 
-	t = file->read(4);
-	//sscanf(t, "%4c", previoustagsize);
-	//werror("read previoustagsize %d, should be... %d\n", previoustagsize, 11 + data_size);
-
+	if (backwards) {
+		file->seek(pos);
+	} else {
+		t = file->read(4); // previous tag size
+	}
 	return ({ tag_type, timestamp, data });
 }
 
-//! writes metadata and closes the file
+//! closes the file
 int close() {
 	/*
 	if (mode == "w" || mode == "cw")
